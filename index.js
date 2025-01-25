@@ -88,7 +88,7 @@ app.post("/jwt", (req, res) => {
       .cookie("token", token, {
         httpOnly: true,
         secure: true,
-        // sameSite: "none",
+        sameSite: "none",
       })
       .send({ success: true });
   } catch (err) {
@@ -103,6 +103,7 @@ app.post("/jwt-logout", (req, res) => {
       maxAge: 0,
       httpOnly: true,
       secure: true,
+      sameSite: "none",
     })
     .send({ success: true });
 });
