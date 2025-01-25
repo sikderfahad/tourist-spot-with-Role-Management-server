@@ -5,6 +5,8 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { MongoClient, ServerApiVersion, ObjectId } from "mongodb";
 import cloudinary from "cloudinary";
+import jwt from "jsonwebtoken";
+import cookieParser from "cookie-parser";
 
 dotenv.config();
 
@@ -15,6 +17,8 @@ const DB_PASS = process.env.DB_PASS;
 const CLOUD_NAME = process.env.CLOUD_NAME;
 const CLOUD_API_KEY = process.env.CLOUD_API_KEY;
 const CLOUD_API_SECRET = process.env.CLOUD_API_SECRET;
+
+const JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET;
 
 // Cloudinary configuration
 cloudinary.v2.config({
@@ -31,13 +35,15 @@ if (!DB_USER || !DB_PASS) {
 const app = express();
 
 // Middleware
+
+app.use(json());
 app.use(
   cors({
-    origin: ["https://tourist-spot-9429c.web.app", "http://localhost:5173"],
+    origin: ["http://localhost:5173", "https://tourist-spot-9429c.web.app"],
     credentials: true,
   })
 );
-app.use(json());
+app.use(cookieParser());
 app.use(helmet());
 app.use(
   rateLimit({
@@ -58,13 +64,79 @@ app.use((err, req, res, next) => {
     .json({ success: false, message: err.message || "Internal server error" });
 });
 
-app.get("/", (req, res) => {
-  res.send("Tourists server is running ...");
+// Auth related API
+
+app.post("/jwt", (req, res) => {
+  const user = req.body;
+  if (!user) {
+    return res
+      .status(401)
+      .send({ success: false, message: "Verified email not found!" });
+  }
+
+  try {
+    const token = jwt.sign(user, JWT_ACCESS_SECRET, { expiresIn: "1h" });
+    if (!token) {
+      return res
+        .status(401)
+        .send({ success: false, message: "jwt token generate failed" });
+    }
+
+    // console.log(user, token);
+
+    res
+      .cookie("token", token, {
+        httpOnly: true,
+        secure: true,
+        // sameSite: "none",
+      })
+      .send({ success: true });
+  } catch (err) {
+    console.log(`Error when jwt access token generate: ${err}`);
+  }
 });
 
-// const uri = "mongodb://localhost:27017/";
-// const uri = "mongodb://localhost:27017";
+// clear jwt access token from cookies
+app.post("/jwt-logout", (req, res) => {
+  res
+    .clearCookie("token", {
+      maxAge: 0,
+      httpOnly: true,
+      secure: true,
+    })
+    .send({ success: true });
+});
 
+// Auth related middleware
+const verifyToken = (req, res, next) => {
+  const token = req.cookies?.token;
+  // console.log("token from verifyToken: ", token);
+  if (!token) {
+    return res.status(403).send({
+      success: false,
+      message: "Unauthorized access. Please login to continue",
+    });
+  }
+
+  try {
+    jwt.verify(token, JWT_ACCESS_SECRET, (err, decoded) => {
+      if (err) {
+        return res
+          .status(403)
+          .send({ success: false, message: "Access forbidden" });
+      }
+      // console.log(decoded);
+      req.user = decoded;
+      next();
+    });
+  } catch (err) {
+    console.log(`jwt verification error: ${err}`);
+  }
+};
+
+// ----------------------END Auth API
+
+// const uri = "mongodb://localhost:27017";
 const uri = `mongodb+srv://${DB_USER}:${DB_PASS}@cluster0.2wh4i.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -84,6 +156,11 @@ console.log("Pinged your deployment. You successfully connected to MongoDB!");
 const database = client.db("travel-agency");
 const collection = database.collection("tourist-spot");
 
+// Check server running status
+app.get("/", (req, res) => {
+  res.send("Tourists server is running ...");
+});
+
 // Get all tourist spot data
 app.get("/tourist-spot", async (req, res, next) => {
   try {
@@ -98,15 +175,23 @@ app.get("/tourist-spot", async (req, res, next) => {
 });
 
 // Get all tourist spot data for a specific user
-app.get("/tourist-spot/user/:email", async (req, res, next) => {
+app.get("/tourist-spot/user/:email", verifyToken, async (req, res, next) => {
   const email = req.params.email;
+  const verifiedUser = req.user?.user;
+  // console.log(email, verifiedUser, req.cookies?.token);
 
   if (!email) {
-    // Return 400 Bad Request if email is not provided
     return res.status(400).json({
       success: false,
       message: "Email parameter is required.",
     });
+  }
+  // console.log(`check both email are same: ${email === verifiedUser}`);
+
+  if (email !== verifiedUser) {
+    return res
+      .status(403)
+      .send({ success: false, message: "Access forbidden" });
   }
 
   try {
@@ -123,6 +208,7 @@ app.get("/tourist-spot/user/:email", async (req, res, next) => {
     }
 
     // Return data if found
+    // console.log(`Data ready to serve: ${data}`);
     return res.status(200).json({
       success: true,
       data,
