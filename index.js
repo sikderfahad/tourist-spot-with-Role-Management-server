@@ -220,7 +220,7 @@ app.get("/tourist-spot/user/:email", verifyToken, async (req, res, next) => {
 });
 
 // Get a single tourist spot data
-app.get("/tourist-spot/:id", async (req, res, next) => {
+app.get("/tourist-spot/:id", verifyToken, async (req, res, next) => {
   const id = req.params.id;
   try {
     const data = await collection.findOne({ _id: new ObjectId(id) });
@@ -237,7 +237,7 @@ app.get("/tourist-spot/:id", async (req, res, next) => {
 });
 
 // Add data in database
-app.post("/tourist-spot", async (req, res, next) => {
+app.post("/tourist-spot", verifyToken, async (req, res, next) => {
   const touristData = req.body;
   // console.log(touristData);
   try {
@@ -259,7 +259,7 @@ app.post("/tourist-spot", async (req, res, next) => {
 });
 
 // Deleted one tourist spot
-app.delete("/tourist-spot/:id", async (req, res, next) => {
+app.delete("/tourist-spot/:id", verifyToken, async (req, res, next) => {
   const id = req.params.id;
   try {
     const filter = { _id: new ObjectId(id) };
@@ -286,7 +286,7 @@ app.delete("/tourist-spot/:id", async (req, res, next) => {
   }
 });
 
-app.patch("/tourist-spot/:id", async (req, res, next) => {
+app.patch("/tourist-spot/:id", verifyToken, async (req, res, next) => {
   const id = req.params.id;
   const updateInfo = req.body;
   const {
